@@ -9,9 +9,9 @@ terraform {
 
 provider "aws" {
   region                   = "us-east-1"
-  profile                  = "terraform_user"
-  shared_credentials_files = ["C:\\Users\\France Simao\\.aws\\credentials"]
-  shared_config_files      = ["C:\\Users\\France Simao\\.aws\\config"]
+  profile                  = "terraform"
+  shared_credentials_files = ["C:\\Users\\AlmeidaAlmeida\\.aws\\credentials"]
+  shared_config_files      = ["C:\\Users\\AlmeidaAlmeida\\.aws\\config"]
 }
 
 # Custom VPC
@@ -23,10 +23,12 @@ resource "aws_vpc" "quick_start_vpc" {
 
 # Private subnets
 resource "aws_subnet" "private_network_1" {
- # Add name (private network 1)
   vpc_id            = aws_vpc.quick_start_vpc.id
   cidr_block        = "10.0.0.0/24"
   availability_zone = "us-east-1a"
+  tags = {
+    Name = "private_subnet_1"
+  }
 }
 
 resource "aws_subnet" "private_network_2" {
@@ -34,6 +36,9 @@ resource "aws_subnet" "private_network_2" {
   vpc_id            = aws_vpc.quick_start_vpc.id
   cidr_block        = "10.0.1.0/24"
   availability_zone = "us-east-1b"
+  tags = {
+    Name = "private_subnet_2"
+  }
 }
 
 # Public subnets
@@ -42,6 +47,9 @@ resource "aws_subnet" "public_network_1" {
   vpc_id            = aws_vpc.quick_start_vpc.id
   cidr_block        = "10.0.2.0/24"
   availability_zone = "us-east-1a"
+  tags = {
+    Name = "public_subnet_1"
+  }
 }
 
 resource "aws_subnet" "public_network_2" {
@@ -49,6 +57,9 @@ resource "aws_subnet" "public_network_2" {
   vpc_id            = aws_vpc.quick_start_vpc.id
   cidr_block        = "10.0.3.0/24"
   availability_zone = "us-east-1b"
+  tags = {
+    Name = "public_subnet_2"
+  }
 }
 
 # Internet GW
@@ -63,6 +74,7 @@ resource "aws_lb" "quick_start_lb" {
   subnets            = [aws_subnet.public_network_1.id, aws_subnet.public_network_2.id]
   security_groups    = [aws_security_group.allow_http.id]
   # Listener ports and instance missing
+
 }
 
 # SG to allow inbound HTTP
@@ -162,25 +174,11 @@ resource "aws_route_table_association" "private_route_table_association_2" {
   route_table_id = aws_route_table.private_route_table_2.id
 }
 
-
-# Bastion host Instance located in public network
-
-resource "aws_instance" "bastion_host" {
-  ami           = "ami-0889a44b331db0194"
-  instance_type = "t2.micro"
-  subnet_id = aws_subnet.public_network_1.id
-  security_groups = [ aws_security_group.SG_allow_ssh ]
-
-  tags = {
-    Name = "Bastion-host"
-  }
-}
-
 # Security Group responsible for allowing ssh traffic to bastion host
 
 resource "aws_security_group" "SG_allow_ssh" {
 
-  name        = "Alow SSH Bastion"
+  name        = "Allow SSH Bastion"
   description = "Allow ssh traffic"
   vpc_id      = aws_vpc.quick_start_vpc.id
 
@@ -198,5 +196,79 @@ resource "aws_security_group" "SG_allow_ssh" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-      
+
 }
+
+
+data "aws_ami" "amazon" {
+  most_recent = true
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+  owners = ["amazon"]
+}
+
+# Bastion host Instance located in public network
+resource "aws_instance" "bastion_host" {
+  ami             = data.aws_ami.amazon.id
+  instance_type   = "t2.micro"
+  subnet_id       = aws_subnet.public_network_1.id
+  security_groups = [aws_security_group.SG_allow_ssh.id]
+
+  tags = {
+    Name = "Bastion-host"
+  }
+}
+
+# Webserver
+resource "aws_instance" "web_server" {
+  ami             = data.aws_ami.amazon.id
+  instance_type   = "t2.micro"
+  subnet_id       = aws_subnet.public_network_1.id
+  security_groups = [aws_security_group.SG_allow_ssh.id]
+  user_data       = file("userdata.sh")
+  tags = {
+    Name = "Web Server"
+  }
+}
+
+
+# Target group
+
+
+resource "aws_lb_target_group" "tg_webserver" {
+  name     = "tg-webserver"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.quick_start_vpc.id
+  health_check {
+    path = "/"
+  }
+}
+
+resource "aws_lb_target_group_attachment" "tg_webserver_attachment" {
+  target_group_arn = aws_lb_target_group.tg_webserver.arn
+  target_id        = aws_instance.web_server.id
+  port             = 80
+}
+resource "aws_lb_listener" "front_end" {
+  load_balancer_arn = aws_lb.quick_start_lb.arn
+  port              = "80"
+  protocol          = "HTTP"
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tg_webserver.arn
+  }
+}
+
+
