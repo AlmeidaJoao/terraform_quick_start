@@ -9,9 +9,9 @@ terraform {
 
 provider "aws" {
   region                   = "us-east-1"
-  profile                  = "terraform"
-  shared_credentials_files = ["C:\\Users\\AlmeidaAlmeida\\.aws\\credentials"]
-  shared_config_files      = ["C:\\Users\\AlmeidaAlmeida\\.aws\\config"]
+  profile                  = "terraform_user"
+  shared_credentials_files = ["C:\\Users\\France Simao\\.aws\\credentials"]
+  shared_config_files      = ["C:\\Users\\France Simao\\.aws\\config"]
 }
 
 # Custom VPC
@@ -23,12 +23,14 @@ resource "aws_vpc" "quick_start_vpc" {
 
 # Private subnets
 resource "aws_subnet" "private_network_1" {
+ # Add name (private network 1)
   vpc_id            = aws_vpc.quick_start_vpc.id
   cidr_block        = "10.0.0.0/24"
   availability_zone = "us-east-1a"
 }
 
 resource "aws_subnet" "private_network_2" {
+  # Add name(private network 2)
   vpc_id            = aws_vpc.quick_start_vpc.id
   cidr_block        = "10.0.1.0/24"
   availability_zone = "us-east-1b"
@@ -36,12 +38,14 @@ resource "aws_subnet" "private_network_2" {
 
 # Public subnets
 resource "aws_subnet" "public_network_1" {
+  # Add name (public network 1)
   vpc_id            = aws_vpc.quick_start_vpc.id
   cidr_block        = "10.0.2.0/24"
   availability_zone = "us-east-1a"
 }
 
 resource "aws_subnet" "public_network_2" {
+  #Add name (public network 2)
   vpc_id            = aws_vpc.quick_start_vpc.id
   cidr_block        = "10.0.3.0/24"
   availability_zone = "us-east-1b"
@@ -58,6 +62,7 @@ resource "aws_lb" "quick_start_lb" {
   load_balancer_type = "application"
   subnets            = [aws_subnet.public_network_1.id, aws_subnet.public_network_2.id]
   security_groups    = [aws_security_group.allow_http.id]
+  # Listener ports and instance missing
 }
 
 # SG to allow inbound HTTP
@@ -155,4 +160,43 @@ resource "aws_route_table_association" "private_route_table_association_1" {
 resource "aws_route_table_association" "private_route_table_association_2" {
   subnet_id      = aws_subnet.private_network_2.id
   route_table_id = aws_route_table.private_route_table_2.id
+}
+
+
+# Bastion host Instance located in public network
+
+resource "aws_instance" "bastion_host" {
+  ami           = "ami-0889a44b331db0194"
+  instance_type = "t2.micro"
+  subnet_id = aws_subnet.public_network_1.id
+  security_groups = [ aws_security_group.SG_allow_ssh ]
+
+  tags = {
+    Name = "Bastion-host"
+  }
+}
+
+# Security Group responsible for allowing ssh traffic to bastion host
+
+resource "aws_security_group" "SG_allow_ssh" {
+
+  name        = "Alow SSH Bastion"
+  description = "Allow ssh traffic"
+  vpc_id      = aws_vpc.quick_start_vpc.id
+
+  ingress {
+    description = "SSH connection"
+    from_port   = 0
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  # improve
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+      
 }
