@@ -9,9 +9,9 @@ terraform {
 
 provider "aws" {
   region                   = "us-east-1"
-  profile                  = "terraform"
-  shared_credentials_files = ["C:\\Users\\AlmeidaAlmeida\\.aws\\credentials"]
-  shared_config_files      = ["C:\\Users\\AlmeidaAlmeida\\.aws\\config"]
+  profile                  = "terraform_user"
+  shared_credentials_files = ["C:\\Users\\France Simao\\.aws\\credentials"]
+  shared_config_files      = ["C:\\Users\\France Simao\\.aws\\config"]
 }
 
 # Custom VPC
@@ -199,7 +199,7 @@ resource "aws_security_group" "SG_allow_ssh" {
 
 }
 
-
+# Specify the type of instance that will be created
 data "aws_ami" "amazon" {
   most_recent = true
   filter {
@@ -220,23 +220,44 @@ data "aws_ami" "amazon" {
 
 # Bastion host Instance located in public network
 resource "aws_instance" "bastion_host" {
-  ami             = data.aws_ami.amazon.id
-  instance_type   = "t2.micro"
-  subnet_id       = aws_subnet.public_network_1.id
-  security_groups = [aws_security_group.SG_allow_ssh.id]
+  ami                         = data.aws_ami.amazon.id
+  instance_type               = "t2.micro"
+  subnet_id                   = aws_subnet.public_network_1.id
+  security_groups             = [aws_security_group.SG_allow_ssh.id]
+  associate_public_ip_address = true
 
   tags = {
     Name = "Bastion-host"
   }
 }
 
+# Key pair for private instance(web server)
+resource "tls_private_key" "instance_key" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "aws_key_pair" "generated_key" {
+  key_name   = var.key_pair_name
+  public_key = tls_private_key.instance_key.public_key_openssh
+}
+
+resource "local_file" "local_key_pair" {
+  filename        = "${var.key_pair_name}.pem"
+  file_permission = "0400"
+  content         = tls_private_key.instance_key.private_key_pem
+}
+
 # Webserver
 resource "aws_instance" "web_server" {
   ami             = data.aws_ami.amazon.id
   instance_type   = "t2.micro"
-  subnet_id       = aws_subnet.public_network_1.id
-  security_groups = [aws_security_group.SG_allow_ssh.id]
-  user_data       = file("userdata.sh")
+  subnet_id       = aws_subnet.private_network_1.id
+  security_groups = [aws_security_group.SG_allow_ssh.id, aws_security_group.allow_http.id]
+ 
+  key_name        = aws_key_pair.generated_key.key_name
+  user_data = file("userdata.sh")
+
   tags = {
     Name = "Web Server"
   }
@@ -261,6 +282,8 @@ resource "aws_lb_target_group_attachment" "tg_webserver_attachment" {
   target_id        = aws_instance.web_server.id
   port             = 80
 }
+
+# Listener
 resource "aws_lb_listener" "front_end" {
   load_balancer_arn = aws_lb.quick_start_lb.arn
   port              = "80"
