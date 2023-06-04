@@ -2,7 +2,8 @@
 ### About the project
 Welcome to our Terraform project, an excellent starting point for anyone interested in learning Terraform or exploring its capabilities. This project is designed to help you create the necessary infrastructure components and deploy a Tetris game, sourced from Docker Hub.
 The image below provides a comprehensive overview of the project:
-    [IMAGE]
+
+![Architecture](/images/architecture.png)
 With Terraform, you can easily provision and manage your infrastructure as code, enabling you to automate the deployment and configuration of various resources. By following this project, you'll gain hands-on experience in deploying a Tetris game using Terraform.
 
 #### Built with ⚒️
