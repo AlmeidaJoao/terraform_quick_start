@@ -9,56 +9,35 @@ terraform {
 
 provider "aws" {
   region                   = "us-east-1"
-  profile                  = "terraform_user"
-  shared_credentials_files = ["C:\\Users\\France Simao\\.aws\\credentials"]
-  shared_config_files      = ["C:\\Users\\France Simao\\.aws\\config"]
+  profile                  = "terraform"
+  shared_credentials_files = ["C:\\Users\\AlmeidaAlmeida\\.aws\\credentials"]
+  shared_config_files      = ["C:\\Users\\AlmeidaAlmeida\\.aws\\config"]
 }
 
 # Custom VPC
 resource "aws_vpc" "quick_start_vpc" {
-  cidr_block           = "10.0.0.0/16"
+  cidr_block           = var.vpc_cidr_block
   enable_dns_hostnames = true
   enable_dns_support   = true
 }
 
-# Private subnets
-resource "aws_subnet" "private_network_1" {
+
+resource "aws_subnet" "private_network" {
+  count             = 2
   vpc_id            = aws_vpc.quick_start_vpc.id
-  cidr_block        = "10.0.0.0/24"
-  availability_zone = "us-east-1a"
+  cidr_block        = cidrsubnet(var.vpc_cidr_block, 8, count.index)
+  availability_zone = var.availability_zones[count.index]
   tags = {
-    Name = "private_subnet_1"
+    Name = "private_subnet_${count.index}"
   }
 }
-
-resource "aws_subnet" "private_network_2" {
-  # Add name(private network 2)
+resource "aws_subnet" "public_network" {
+  count             = 2
   vpc_id            = aws_vpc.quick_start_vpc.id
-  cidr_block        = "10.0.1.0/24"
-  availability_zone = "us-east-1b"
+  cidr_block        = cidrsubnet(var.vpc_cidr_block, 8, count.index + 2)
+  availability_zone = var.availability_zones[count.index]
   tags = {
-    Name = "private_subnet_2"
-  }
-}
-
-# Public subnets
-resource "aws_subnet" "public_network_1" {
-  # Add name (public network 1)
-  vpc_id            = aws_vpc.quick_start_vpc.id
-  cidr_block        = "10.0.2.0/24"
-  availability_zone = "us-east-1a"
-  tags = {
-    Name = "public_subnet_1"
-  }
-}
-
-resource "aws_subnet" "public_network_2" {
-  #Add name (public network 2)
-  vpc_id            = aws_vpc.quick_start_vpc.id
-  cidr_block        = "10.0.3.0/24"
-  availability_zone = "us-east-1b"
-  tags = {
-    Name = "public_subnet_2"
+    Name = "public_subnet_${count.index}"
   }
 }
 
@@ -71,10 +50,8 @@ resource "aws_internet_gateway" "quick_start_gw" {
 resource "aws_lb" "quick_start_lb" {
   internal           = false
   load_balancer_type = "application"
-  subnets            = [aws_subnet.public_network_1.id, aws_subnet.public_network_2.id]
-  security_groups    = [aws_security_group.allow_http.id]
-  # Listener ports and instance missing
-
+  subnets         = aws_subnet.public_network.*.id
+  security_groups = [aws_security_group.allow_http.id]
 }
 
 # SG to allow inbound HTTP
@@ -109,69 +86,45 @@ resource "aws_route_table" "public_route_table" {
   }
 }
 
-# Route table associations for public subnets
-resource "aws_route_table_association" "public_route_table_association_1" {
-  subnet_id      = aws_subnet.public_network_1.id
+resource "aws_route_table_association" "public_rta" {
+  count          = 2
+  subnet_id      = aws_subnet.public_network[count.index].id
   route_table_id = aws_route_table.public_route_table.id
 }
 
-resource "aws_route_table_association" "public_route_table_association_2" {
-  subnet_id      = aws_subnet.public_network_2.id
-  route_table_id = aws_route_table.public_route_table.id
-}
-
-# Elastic IP used by NAT gateway
-resource "aws_eip" "nat_gateway_eip_1" {
+resource "aws_eip" "eip" {
+  count      = 2
   vpc        = true
   depends_on = [aws_internet_gateway.quick_start_gw]
-}
-
-resource "aws_eip" "nat_gateway_eip_2" {
-  vpc        = true
-  depends_on = [aws_internet_gateway.quick_start_gw]
-}
-
-# NAT Gateways for private subnets
-resource "aws_nat_gateway" "nat_gateway_1" {
-  allocation_id = aws_eip.nat_gateway_eip_1.id
-  subnet_id     = aws_subnet.public_network_1.id
-  depends_on    = [aws_internet_gateway.quick_start_gw]
-}
-
-resource "aws_nat_gateway" "nat_gateway_2" {
-  allocation_id = aws_eip.nat_gateway_eip_2.id
-  subnet_id     = aws_subnet.public_network_2.id
-  depends_on    = [aws_internet_gateway.quick_start_gw]
-}
-
-# Private route table for private subnet 1
-resource "aws_route_table" "private_route_table_1" {
-  vpc_id = aws_vpc.quick_start_vpc.id
-
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat_gateway_1.id
+  tags = {
+    Name = "eip_${count.index}"
   }
 }
 
-# Private route table for private subnet 2
-resource "aws_route_table" "private_route_table_2" {
-  vpc_id = aws_vpc.quick_start_vpc.id
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat_gateway_2.id
+
+resource "aws_nat_gateway" "nat_gateway" {
+  count         = 2
+  allocation_id = aws_eip.eip[count.index].id
+  subnet_id     = aws_subnet.public_network[count.index].id
+  depends_on    = [aws_internet_gateway.quick_start_gw]
+  tags = {
+    Name = "Nat Gateway ${count.index}"
   }
 }
 
-# Route table associations for pricate subnets
-resource "aws_route_table_association" "private_route_table_association_1" {
-  subnet_id      = aws_subnet.private_network_1.id
-  route_table_id = aws_route_table.private_route_table_1.id
+resource "aws_route_table" "private_route_table" {
+  count  = 2
+  vpc_id = aws_vpc.quick_start_vpc.id
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat_gateway[count.index].id
+  }
 }
 
-resource "aws_route_table_association" "private_route_table_association_2" {
-  subnet_id      = aws_subnet.private_network_2.id
-  route_table_id = aws_route_table.private_route_table_2.id
+resource "aws_route_table_association" "private_route_table_association" {
+  count          = 2
+  subnet_id      = aws_subnet.private_network[count.index].id
+  route_table_id = aws_route_table.private_route_table[count.index].id
 }
 
 # Security Group responsible for allowing ssh traffic to bastion host
@@ -222,7 +175,7 @@ data "aws_ami" "amazon" {
 resource "aws_instance" "bastion_host" {
   ami                         = data.aws_ami.amazon.id
   instance_type               = "t2.micro"
-  subnet_id                   = aws_subnet.public_network_1.id
+  subnet_id                   = aws_subnet.public_network[0].id
   security_groups             = [aws_security_group.SG_allow_ssh.id]
   associate_public_ip_address = true
 
@@ -252,10 +205,10 @@ resource "local_file" "local_key_pair" {
 resource "aws_instance" "web_server" {
   ami             = data.aws_ami.amazon.id
   instance_type   = "t2.micro"
-  subnet_id       = aws_subnet.private_network_1.id
+  subnet_id       = aws_subnet.private_network[0].id
   security_groups = [aws_security_group.SG_allow_ssh.id, aws_security_group.allow_http.id]
- 
-  key_name        = aws_key_pair.generated_key.key_name
+
+  key_name  = aws_key_pair.generated_key.key_name
   user_data = file("userdata.sh")
 
   tags = {
@@ -265,8 +218,6 @@ resource "aws_instance" "web_server" {
 
 
 # Target group
-
-
 resource "aws_lb_target_group" "tg_webserver" {
   name     = "tg-webserver"
   port     = 80
@@ -293,5 +244,4 @@ resource "aws_lb_listener" "front_end" {
     target_group_arn = aws_lb_target_group.tg_webserver.arn
   }
 }
-
 
