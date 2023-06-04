@@ -9,9 +9,9 @@ terraform {
 
 provider "aws" {
   region                   = "us-east-1"
-  profile                  = "terraform"
-  shared_credentials_files = ["C:\\Users\\AlmeidaAlmeida\\.aws\\credentials"]
-  shared_config_files      = ["C:\\Users\\AlmeidaAlmeida\\.aws\\config"]
+  profile                  = "<CONFIGURED_PROFILE>"
+  shared_credentials_files = ["C:\\Users\\<USER>\\.aws\\credentials"]
+  shared_config_files      = ["C:\\Users\\<USER>\\.aws\\config"]
 }
 
 # Custom VPC
